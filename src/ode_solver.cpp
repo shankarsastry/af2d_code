@@ -81,18 +81,23 @@ double eval_sqrt_quad_solution(double c, double d, double t0, double x0, double 
 double ODESolution::evaluate(double t) const {
     if (pieces.empty()) return 0.0;
 
-    for (const auto& piece : pieces) {
-        if (t >= piece.t_start - EPS && t <= piece.t_end + EPS) {
-            double tc = std::clamp(t, piece.t_start, piece.t_end);
-            return std::visit([&](const auto& f) -> double {
-                using T = std::decay_t<decltype(f)>;
-                if constexpr (std::is_same_v<T, Linear>) {
-                    return eval_linear_solution(f.slope, f.intercept, piece.t_start, piece.x_start, tc);
-                } else {
-                    return eval_sqrt_quad_solution(f.c, f.d, piece.t_start, piece.x_start, tc);
-                }
-            }, piece.func);
-        }
+    // Binary search: find the first piece whose t_start > t, then back up one
+    auto it = std::upper_bound(pieces.begin(), pieces.end(), t,
+        [](double val, const PieceSolution& p) { return val < p.t_start; });
+
+    if (it != pieces.begin()) --it;
+
+    // Check if t falls within this piece (with tolerance)
+    if (t >= it->t_start - EPS && t <= it->t_end + EPS) {
+        double tc = std::clamp(t, it->t_start, it->t_end);
+        return std::visit([&](const auto& f) -> double {
+            using T = std::decay_t<decltype(f)>;
+            if constexpr (std::is_same_v<T, Linear>) {
+                return eval_linear_solution(f.slope, f.intercept, it->t_start, it->x_start, tc);
+            } else {
+                return eval_sqrt_quad_solution(f.c, f.d, it->t_start, it->x_start, tc);
+            }
+        }, it->func);
     }
 
     // Beyond last piece

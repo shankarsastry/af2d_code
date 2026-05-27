@@ -115,6 +115,7 @@ SplitResult split_segments(const PSLG& pslg, const SplitParams& params) {
 
     // Pass 1: compute ODE solutions for all segments
     std::vector<SegmentODE> seg_odes(num_segs);
+    #pragma omp parallel for schedule(dynamic) if(num_segs > 1)
     for (int i = 0; i < num_segs; ++i) {
         seg_odes[i] = compute_segment_ode(pslg, i);
     }

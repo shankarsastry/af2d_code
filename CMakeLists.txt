@@ -25,6 +25,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+find_package(OpenMP)
+
 enable_testing()
 
 add_subdirectory(src)

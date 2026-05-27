@@ -103,3 +103,75 @@ TEST(EndToEnd, InputSegmentsPreserved) {
                            << ") not found as triangle edge";
     }
 }
+
+TEST(EndToEnd, SquareExactCounts) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    pslg.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+    auto split = split_segments(pslg);
+    auto out = triangulate_pslg(split);
+
+    EXPECT_EQ(split.all_vertices.size(), 4u);
+    EXPECT_EQ(split.all_segments.size(), 4u);
+    EXPECT_EQ(out.num_points, 4);
+    EXPECT_EQ(out.num_triangles, 2);
+    EXPECT_EQ(out.num_edges, 5);
+}
+
+TEST(EndToEnd, SquareNStar4ExactCounts) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    pslg.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+    SplitParams params;
+    params.n_star = 4;
+    auto split = split_segments(pslg, params);
+    auto out = triangulate_pslg(split);
+
+    EXPECT_EQ(split.all_vertices.size(), 16u);
+    EXPECT_EQ(split.all_segments.size(), 16u);
+    EXPECT_EQ(out.num_points, 16);
+    EXPECT_EQ(out.num_triangles, 14);
+    EXPECT_EQ(out.num_edges, 29);
+}
+
+TEST(EndToEnd, LShapeExactCounts) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+
+    SplitParams params;
+    params.n_star = 3;
+    auto split = split_segments(pslg, params);
+    auto out = triangulate_pslg(split);
+
+    EXPECT_EQ(split.all_vertices.size(), 20u);
+    EXPECT_EQ(split.all_segments.size(), 20u);
+    EXPECT_EQ(out.num_points, 20);
+    EXPECT_EQ(out.num_triangles, 18);
+    EXPECT_EQ(out.num_edges, 37);
+}
+
+TEST(EndToEnd, Deterministic) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    pslg.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+    SplitParams params;
+    params.n_star = 4;
+    auto r1 = split_segments(pslg, params);
+    auto r2 = split_segments(pslg, params);
+
+    ASSERT_EQ(r1.all_vertices.size(), r2.all_vertices.size());
+    for (size_t i = 0; i < r1.all_vertices.size(); ++i) {
+        EXPECT_EQ(r1.all_vertices[i].x, r2.all_vertices[i].x)
+            << "Vertex " << i << " x differs";
+        EXPECT_EQ(r1.all_vertices[i].y, r2.all_vertices[i].y)
+            << "Vertex " << i << " y differs";
+    }
+}

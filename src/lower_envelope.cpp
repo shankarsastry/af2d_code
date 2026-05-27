@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <set>
+
 
 namespace af2d {
 
@@ -109,11 +109,10 @@ std::vector<double> find_intersections(
     return roots;
 }
 
-struct EvalFunc {
-    const std::vector<DistanceFunction>* functions;
-    double evaluate(int func_idx, double x) const {
-        return (*functions)[func_idx].evaluate(x);
-    }
+struct TaggedBreakpoint {
+    double x;
+    int func_i;  // first involved function index (-1 for boundary-only breakpoints)
+    int func_j;  // second involved function index (-1 if only one involved)
 };
 
 } // anonymous namespace
@@ -129,23 +128,22 @@ LowerEnvelope compute_lower_envelope(const std::vector<DistanceFunction>& functi
         return result;
     }
 
-    // Step 1: Collect all breakpoints
-    std::set<double> breakpoints_set;
-    breakpoints_set.insert(0.0);
-    breakpoints_set.insert(length);
+    // Step 1: Collect tagged breakpoints (each with involved function indices)
+    std::vector<TaggedBreakpoint> tagged_bps;
+    tagged_bps.push_back({0.0, -1, -1});
+    tagged_bps.push_back({length, -1, -1});
 
-    for (const auto& df : functions) {
-        for (const auto& piece : df.pieces) {
-            breakpoints_set.insert(piece.x_start);
-            breakpoints_set.insert(piece.x_end);
+    for (size_t fi = 0; fi < functions.size(); ++fi) {
+        int idx = static_cast<int>(fi);
+        for (const auto& piece : functions[fi].pieces) {
+            tagged_bps.push_back({piece.x_start, idx, -1});
+            tagged_bps.push_back({piece.x_end, idx, -1});
         }
     }
 
-    // Step 2: Find pairwise intersections
-    // For each pair of functions, find where they cross within the domain
+    // Step 2: Find pairwise intersections, tagging each with both function indices
     for (size_t i = 0; i < functions.size(); ++i) {
         for (size_t j = i + 1; j < functions.size(); ++j) {
-            // Check each pair of pieces
             for (const auto& pi : functions[i].pieces) {
                 for (const auto& pj : functions[j].pieces) {
                     double lo = std::max(pi.x_start, pj.x_start);
@@ -154,24 +152,46 @@ LowerEnvelope compute_lower_envelope(const std::vector<DistanceFunction>& functi
 
                     auto crossings = find_intersections(pi.func, pj.func, lo, hi);
                     for (double x : crossings) {
-                        breakpoints_set.insert(x);
+                        tagged_bps.push_back({x, static_cast<int>(i), static_cast<int>(j)});
                     }
                 }
             }
         }
     }
 
-    // Step 3: Sort breakpoints
-    std::vector<double> breakpoints(breakpoints_set.begin(), breakpoints_set.end());
-    std::sort(breakpoints.begin(), breakpoints.end());
+    // Step 3: Sort by x, deduplicate, and merge involved indices
+    std::sort(tagged_bps.begin(), tagged_bps.end(),
+        [](const TaggedBreakpoint& a, const TaggedBreakpoint& b) { return a.x < b.x; });
 
-    // Remove breakpoints outside [0, length]
-    breakpoints.erase(
-        std::remove_if(breakpoints.begin(), breakpoints.end(),
-                        [length](double x) { return x < -EPS || x > length + EPS; }),
-        breakpoints.end());
+    // Deduplicate and collect involved function indices per unique breakpoint
+    std::vector<double> breakpoints;
+    // For each breakpoint, store the set of function indices involved at that boundary
+    std::vector<std::vector<int>> bp_involved;
 
-    // Step 4: For each sub-interval, evaluate all functions at midpoint and pick minimum
+    for (size_t i = 0; i < tagged_bps.size(); ) {
+        double x = tagged_bps[i].x;
+        if (x < -EPS || x > length + EPS) { ++i; continue; }
+
+        std::vector<int> involved;
+        size_t j = i;
+        while (j < tagged_bps.size() && std::abs(tagged_bps[j].x - x) < EPS) {
+            if (tagged_bps[j].func_i >= 0) involved.push_back(tagged_bps[j].func_i);
+            if (tagged_bps[j].func_j >= 0) involved.push_back(tagged_bps[j].func_j);
+            ++j;
+        }
+        // Deduplicate involved indices
+        std::sort(involved.begin(), involved.end());
+        involved.erase(std::unique(involved.begin(), involved.end()), involved.end());
+
+        breakpoints.push_back(x);
+        bp_involved.push_back(std::move(involved));
+        i = j;
+    }
+
+    // Step 4: Track winner across intervals, only re-evaluating at crossings
+    int current_winner = -1;
+    double current_winner_val = std::numeric_limits<double>::max();
+
     for (size_t k = 0; k + 1 < breakpoints.size(); ++k) {
         double x_lo = breakpoints[k];
         double x_hi = breakpoints[k + 1];
@@ -179,21 +199,34 @@ LowerEnvelope compute_lower_envelope(const std::vector<DistanceFunction>& functi
 
         double x_mid = (x_lo + x_hi) / 2.0;
 
-        double best_val = std::numeric_limits<double>::max();
-        int best_idx = -1;
+        if (current_winner < 0) {
+            // First interval: evaluate all functions to find initial winner
+            for (size_t i = 0; i < functions.size(); ++i) {
+                double val = functions[i].evaluate(x_mid);
+                if (val < current_winner_val - EPS) {
+                    current_winner_val = val;
+                    current_winner = static_cast<int>(i);
+                }
+            }
+        } else {
+            // Re-evaluate current winner at new midpoint
+            current_winner_val = functions[current_winner].evaluate(x_mid);
 
-        for (size_t i = 0; i < functions.size(); ++i) {
-            double val = functions[i].evaluate(x_mid);
-            if (val < best_val - EPS) {
-                best_val = val;
-                best_idx = static_cast<int>(i);
+            // Check only the functions involved at this breakpoint
+            const auto& involved = bp_involved[k];
+            for (int idx : involved) {
+                double val = functions[idx].evaluate(x_mid);
+                if (val < current_winner_val - EPS) {
+                    current_winner_val = val;
+                    current_winner = idx;
+                }
             }
         }
 
-        if (best_idx < 0) continue;
+        if (current_winner < 0) continue;
 
         // Find which piece of the winning function covers this interval
-        const auto& winner = functions[best_idx];
+        const auto& winner = functions[current_winner];
         for (const auto& piece : winner.pieces) {
             if (x_mid >= piece.x_start - EPS && x_mid <= piece.x_end + EPS) {
                 result.pieces.push_back({x_lo, x_hi, piece.func});

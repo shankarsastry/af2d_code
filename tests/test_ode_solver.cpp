@@ -86,3 +86,59 @@ TEST(ODESolver, Roundtrip) {
         EXPECT_NEAR(sol.evaluate(piece.t_end), piece.x_end, 1e-8);
     }
 }
+
+TEST(ODESolver, EvaluateAtBoundaries) {
+    // Multi-piece solution: evaluate at exact t_start and t_end of each piece
+    double length = 6.0;
+    LowerEnvelope env;
+    env.pieces.push_back({0.0, 2.0, Linear{0.0, 1.0}});       // F=1 constant
+    env.pieces.push_back({2.0, 4.0, SqrtQuadratic{3.0, 0.5}}); // sqrt((x-3)^2+0.25)
+    env.pieces.push_back({4.0, 6.0, Linear{0.5, 2.0}});        // F=0.5x+2
+
+    auto sol = solve_ode(env, length);
+    ASSERT_GE(sol.pieces.size(), 2u);
+
+    for (const auto& piece : sol.pieces) {
+        EXPECT_NEAR(sol.evaluate(piece.t_start), piece.x_start, 1e-8)
+            << "Mismatch at t_start=" << piece.t_start;
+        EXPECT_NEAR(sol.evaluate(piece.t_end), piece.x_end, 1e-8)
+            << "Mismatch at t_end=" << piece.t_end;
+    }
+}
+
+TEST(ODESolver, ManyPieces) {
+    // Construct envelope with 10+ linear pieces, solve ODE, verify evaluate
+    double length = 10.0;
+    LowerEnvelope env;
+    int n_pieces = 12;
+    double dx = length / n_pieces;
+    for (int i = 0; i < n_pieces; ++i) {
+        double x0 = i * dx;
+        double x1 = (i + 1) * dx;
+        // Alternating constant values: 1.0 and 2.0
+        double c = (i % 2 == 0) ? 1.0 : 2.0;
+        env.pieces.push_back({x0, x1, Linear{0.0, c}});
+    }
+
+    auto sol = solve_ode(env, length);
+    ASSERT_GE(sol.pieces.size(), 10u);
+    EXPECT_NEAR(sol.evaluate(0.0), 0.0, 1e-10);
+    EXPECT_NEAR(sol.evaluate(sol.total_T), length, 1e-8);
+
+    // Evaluate at several intermediate t values
+    for (int k = 1; k < 20; ++k) {
+        double t = k * sol.total_T / 20.0;
+        double x = sol.evaluate(t);
+        EXPECT_GE(x, 0.0 - 1e-10);
+        EXPECT_LE(x, length + 1e-10);
+    }
+
+    // Verify monotonicity
+    double prev_x = 0.0;
+    for (int k = 1; k <= 100; ++k) {
+        double t = k * sol.total_T / 100.0;
+        double x = sol.evaluate(t);
+        EXPECT_GE(x, prev_x - 1e-10) << "Non-monotonic at t=" << t;
+        prev_x = x;
+    }
+}

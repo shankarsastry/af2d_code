@@ -124,6 +124,47 @@ TEST(Distance, FarthestEndpointUnitLength) {
     EXPECT_NEAR(df.evaluate(0.5), 0.5, 1e-12);
 }
 
+TEST(Distance, DiagonalSegment) {
+    // S_i: (0,0) to (2,0), S_j: (3,0) to (4,1) — 45-degree diagonal
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {2, 0}, {3, 0}, {4, 1}};
+    pslg.segments = {{0, 1}, {2, 3}};
+
+    auto df = distance_to_segment(pslg, 0, 1);
+
+    // At x=0: closest point on S_j is (3,0), distance = 3
+    EXPECT_NEAR(df.evaluate(0.0), 3.0, 1e-6);
+
+    // At x=2 (nearest end): closest point on S_j is (3,0), distance = 1
+    EXPECT_NEAR(df.evaluate(2.0), 1.0, 1e-6);
+
+    // At x=1 (midpoint): closest point on S_j is (3,0), distance = 2
+    EXPECT_NEAR(df.evaluate(1.0), 2.0, 1e-6);
+}
+
+TEST(Distance, NearlyParallelSegments) {
+    // Two nearly-parallel segments at a very small angle
+    // S_i: (0,0) to (10,0), S_j: (0,1) to (10,1.01)
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {10, 0}, {0, 1}, {10, 1.01}};
+    pslg.segments = {{0, 1}, {2, 3}};
+
+    auto df = distance_to_segment(pslg, 0, 1);
+
+    // Distance should be well-behaved (not NaN or Inf)
+    for (double x = 0.0; x <= 10.0; x += 0.5) {
+        double val = df.evaluate(x);
+        EXPECT_FALSE(std::isnan(val)) << "NaN at x=" << x;
+        EXPECT_FALSE(std::isinf(val)) << "Inf at x=" << x;
+        EXPECT_GT(val, 0.0) << "Non-positive at x=" << x;
+    }
+
+    // At x=0: perpendicular distance ~ 1.0
+    EXPECT_NEAR(df.evaluate(0.0), 1.0, 0.1);
+    // At x=10: perpendicular distance ~ 1.01
+    EXPECT_NEAR(df.evaluate(10.0), 1.01, 0.1);
+}
+
 TEST(Distance, FarthestEndpointCapsLFS) {
     // For a unit square, vertex (1,1) is at distance sqrt((x-1)^2+1) from
     // the bottom edge (0,0)-(1,0). At x=0 this is sqrt(2) ≈ 1.414.

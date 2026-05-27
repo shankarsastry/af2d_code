@@ -262,6 +262,32 @@ TEST(SegmentSplitter, SingleSegmentNoSplitsDefaultNStar) {
     EXPECT_EQ(result.all_vertices.size(), 2u);
 }
 
+TEST(SegmentSplitter, SplitDeterministic) {
+    // Split the same PSLG twice, verify all vertex coordinates are bitwise identical
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+
+    SplitParams params;
+    params.n_star = 5;
+    auto r1 = split_segments(pslg, params);
+    auto r2 = split_segments(pslg, params);
+
+    ASSERT_EQ(r1.all_vertices.size(), r2.all_vertices.size());
+    ASSERT_EQ(r1.all_segments.size(), r2.all_segments.size());
+
+    for (size_t i = 0; i < r1.all_vertices.size(); ++i) {
+        EXPECT_EQ(r1.all_vertices[i].x, r2.all_vertices[i].x)
+            << "Vertex " << i << " x differs";
+        EXPECT_EQ(r1.all_vertices[i].y, r2.all_vertices[i].y)
+            << "Vertex " << i << " y differs";
+    }
+}
+
 TEST(SegmentSplitter, FarthestEndpointCapsRefinement) {
     // Two parallel segments far apart. Without the farthest-endpoint cap,
     // F(x) would be large (distance to opposite segment) giving a large T.
