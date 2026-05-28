@@ -13,5 +13,9 @@ add_executable(af2d_tests
 target_link_libraries(af2d_tests PRIVATE af2d_lib GTest::gtest_main)
 target_compile_definitions(af2d_tests PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(af2d_tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 include(GoogleTest)
 gtest_discover_tests(af2d_tests)

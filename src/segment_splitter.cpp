@@ -7,6 +7,9 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace af2d {
 
@@ -129,6 +132,13 @@ NStarResult compute_n_star_from_angle(double theta_degrees) {
 }
 
 SplitResult split_segments(const PSLG& pslg, const SplitParams& params) {
+#ifdef _OPENMP
+    int old_max_threads = omp_get_max_threads();
+    if (params.num_threads > 0) {
+        omp_set_num_threads(params.num_threads);
+    }
+#endif
+
     int num_segs = static_cast<int>(pslg.segments.size());
     int n_star = std::max(1, params.n_star);
 
@@ -252,6 +262,12 @@ SplitResult split_segments(const PSLG& pslg, const SplitParams& params) {
             result.all_segments.push_back({chain_vertices[k], chain_vertices[k + 1]});
         }
     }
+
+#ifdef _OPENMP
+    if (params.num_threads > 0) {
+        omp_set_num_threads(old_max_threads);
+    }
+#endif
 
     return result;
 }

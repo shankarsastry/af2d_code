@@ -9,12 +9,13 @@
 using namespace af2d;
 
 static void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog << " <input.poly|input.node> [-q<angle>] [-n<n_star>]\n"
+    std::cerr << "Usage: " << prog << " <input.poly|input.node> [-q<angle>] [-n<n_star>] [-j<threads>]\n"
               << "\n"
               << "  <input>       Input file (.poly or .node)\n"
               << "  -q<angle>     Minimum angle in degrees (computes n* if < 30)\n"
               << "  -n<n_star>    Explicit n* value (overrides -q)\n"
               << "  -t            Enable quadtree acceleration\n"
+              << "  -j<threads>   Number of OpenMP threads (0 = default)\n"
               << "\n"
               << "Output: <basename>.1.node, <basename>.1.ele, <basename>.1.edge\n";
 }
@@ -36,6 +37,7 @@ int main(int argc, char* argv[]) {
     double q_angle = -1.0;
     int explicit_n_star = -1;
     bool use_quadtree = false;
+    int num_threads = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -45,6 +47,8 @@ int main(int argc, char* argv[]) {
             q_angle = std::stod(arg.substr(2));
         } else if (arg.rfind("-n", 0) == 0) {
             explicit_n_star = std::stoi(arg.substr(2));
+        } else if (arg.rfind("-j", 0) == 0) {
+            num_threads = std::stoi(arg.substr(2));
         } else if (arg[0] == '-') {
             std::cerr << "Unknown option: " << arg << "\n";
             print_usage(argv[0]);
@@ -86,6 +90,7 @@ int main(int argc, char* argv[]) {
     // else default n_star = 1
 
     params.use_quadtree = use_quadtree;
+    params.num_threads = num_threads;
 
     // Split and triangulate
     auto split = split_segments(pslg, params);

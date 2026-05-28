@@ -16,7 +16,7 @@ cmake --build build
 ## Running
 
 ```
-af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>] [-t]
+af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>] [-t] [-j<threads>]
 ```
 
 ### Arguments
@@ -36,6 +36,8 @@ af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>] [-t]
 - `-n<n_star>` -- Explicit n\* value for segment splitting. Controls how many subsegments the shortest reference segment gets; other segments get proportionally more based on their local feature size ratio. Overrides the n\* derived from `-q` if both are given. Does not affect Triangle's angle refinement.
 
 - `-t` -- Enable quadtree acceleration for LFS computation. Builds a spatial index to prune distant features during segment splitting, reducing the cost of the pairwise distance computations. Produces bitwise-identical output to the default algorithm. This feature has been unit tested for correctness (including equivalence tests against the naive path on several geometries), but has not been stress tested on large real-world inputs.
+
+- `-j<threads>` -- Number of OpenMP threads to use for parallel segment splitting. Defaults to the OpenMP runtime default (typically the number of available cores). Set `-j1` to force single-threaded execution.
 
 ### Precedence
 
@@ -61,6 +63,9 @@ af2d_main mesh.poly -n4 -q25
 
 # Quadtree-accelerated splitting
 af2d_main mesh.poly -n4 -t
+
+# Limit to 2 OpenMP threads
+af2d_main mesh.poly -n4 -j2
 ```
 
 ### Output

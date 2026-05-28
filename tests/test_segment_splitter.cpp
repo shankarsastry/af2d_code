@@ -412,6 +412,143 @@ TEST(QuadtreeEquivalence, LargeGrid) {
     assert_quadtree_equivalent(pslg, 3);
 }
 
+// --- Multi-threaded determinism tests ---
+
+#ifdef _OPENMP
+#include <omp.h>
+
+namespace {
+
+void assert_threaded_determinism(const PSLG& pslg, const SplitParams& base_params) {
+    // Run with 1 thread as baseline
+    SplitParams params1 = base_params;
+    params1.num_threads = 1;
+    auto baseline = split_segments(pslg, params1);
+
+    for (int threads : {2, 4}) {
+        SplitParams params_mt = base_params;
+        params_mt.num_threads = threads;
+        auto result = split_segments(pslg, params_mt);
+
+        ASSERT_EQ(baseline.all_vertices.size(), result.all_vertices.size())
+            << "Vertex count mismatch with " << threads << " threads";
+        ASSERT_EQ(baseline.all_segments.size(), result.all_segments.size())
+            << "Segment count mismatch with " << threads << " threads";
+
+        for (size_t i = 0; i < baseline.all_vertices.size(); ++i) {
+            EXPECT_EQ(baseline.all_vertices[i].x, result.all_vertices[i].x)
+                << "Vertex " << i << " x differs with " << threads << " threads";
+            EXPECT_EQ(baseline.all_vertices[i].y, result.all_vertices[i].y)
+                << "Vertex " << i << " y differs with " << threads << " threads";
+        }
+
+        for (size_t i = 0; i < baseline.all_segments.size(); ++i) {
+            EXPECT_EQ(baseline.all_segments[i].p, result.all_segments[i].p)
+                << "Segment " << i << " p differs with " << threads << " threads";
+            EXPECT_EQ(baseline.all_segments[i].q, result.all_segments[i].q)
+                << "Segment " << i << " q differs with " << threads << " threads";
+        }
+    }
+}
+
+} // namespace
+
+TEST(ThreadSafety, OpenMPRuntimeHonorsThreadCount) {
+    int old_max = omp_get_max_threads();
+
+    for (int requested : {2, 4}) {
+        omp_set_num_threads(requested);
+        int actual = 0;
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                actual = omp_get_num_threads();
+            }
+        }
+        EXPECT_EQ(actual, requested)
+            << "OpenMP did not spawn " << requested << " threads; "
+               "ThreadSafety tests cannot verify multi-threaded behavior";
+    }
+
+    omp_set_num_threads(old_max);
+}
+
+TEST(ThreadSafety, NaiveSquare) {
+    PSLG pslg = make_unit_square();
+    SplitParams params;
+    params.n_star = 4;
+    params.use_quadtree = false;
+    assert_threaded_determinism(pslg, params);
+}
+
+TEST(ThreadSafety, NaiveLShape) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+    SplitParams params;
+    params.n_star = 3;
+    params.use_quadtree = false;
+    assert_threaded_determinism(pslg, params);
+}
+
+TEST(ThreadSafety, QuadtreeSquare) {
+    PSLG pslg = make_unit_square();
+    SplitParams params;
+    params.n_star = 4;
+    params.use_quadtree = true;
+    assert_threaded_determinism(pslg, params);
+}
+
+TEST(ThreadSafety, QuadtreeLShape) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+    SplitParams params;
+    params.n_star = 3;
+    params.use_quadtree = true;
+    assert_threaded_determinism(pslg, params);
+}
+
+TEST(ThreadSafety, QuadtreeLargeGrid) {
+    PSLG pslg;
+    int grid = 20;
+    for (int y = 0; y <= grid; ++y) {
+        for (int x = 0; x <= grid; ++x) {
+            pslg.vertices.push_back({static_cast<double>(x),
+                                     static_cast<double>(y)});
+        }
+    }
+    for (int y = 0; y <= grid; ++y) {
+        for (int x = 0; x < grid; ++x) {
+            int p = y * (grid + 1) + x;
+            int q = p + 1;
+            pslg.segments.push_back({p, q});
+        }
+    }
+    for (int x = 0; x <= grid; ++x) {
+        for (int y = 0; y < grid; ++y) {
+            int p = y * (grid + 1) + x;
+            int q = p + (grid + 1);
+            pslg.segments.push_back({p, q});
+        }
+    }
+    SplitParams params;
+    params.n_star = 3;
+    params.use_quadtree = true;
+    assert_threaded_determinism(pslg, params);
+}
+
+#endif // _OPENMP
+
 TEST(SegmentSplitter, FarthestEndpointCapsRefinement) {
     // Two parallel segments far apart. Without the farthest-endpoint cap,
     // F(x) would be large (distance to opposite segment) giving a large T.

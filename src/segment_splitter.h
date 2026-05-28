@@ -25,6 +25,7 @@ struct SplitParams {
     //        // check result.message if needed
     int n_star = 1;
     bool use_quadtree = false;
+    int num_threads = 0;  // 0 = use OpenMP default
 };
 
 // Result from compute_n_star_from_angle.
