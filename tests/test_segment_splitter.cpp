@@ -288,6 +288,130 @@ TEST(SegmentSplitter, SplitDeterministic) {
     }
 }
 
+// --- Quadtree equivalence tests ---
+
+namespace {
+
+void assert_quadtree_equivalent(const PSLG& pslg, int n_star) {
+    SplitParams naive_params;
+    naive_params.n_star = n_star;
+    naive_params.use_quadtree = false;
+    auto naive = split_segments(pslg, naive_params);
+
+    SplitParams qt_params;
+    qt_params.n_star = n_star;
+    qt_params.use_quadtree = true;
+    auto qt = split_segments(pslg, qt_params);
+
+    ASSERT_EQ(naive.all_vertices.size(), qt.all_vertices.size())
+        << "Vertex count mismatch for n_star=" << n_star;
+    ASSERT_EQ(naive.all_segments.size(), qt.all_segments.size())
+        << "Segment count mismatch for n_star=" << n_star;
+
+    for (size_t i = 0; i < naive.all_vertices.size(); ++i) {
+        EXPECT_EQ(naive.all_vertices[i].x, qt.all_vertices[i].x)
+            << "Vertex " << i << " x differs for n_star=" << n_star;
+        EXPECT_EQ(naive.all_vertices[i].y, qt.all_vertices[i].y)
+            << "Vertex " << i << " y differs for n_star=" << n_star;
+    }
+
+    for (size_t i = 0; i < naive.all_segments.size(); ++i) {
+        EXPECT_EQ(naive.all_segments[i].p, qt.all_segments[i].p)
+            << "Segment " << i << " p differs for n_star=" << n_star;
+        EXPECT_EQ(naive.all_segments[i].q, qt.all_segments[i].q)
+            << "Segment " << i << " q differs for n_star=" << n_star;
+    }
+}
+
+} // namespace
+
+TEST(QuadtreeEquivalence, UnitSquare) {
+    PSLG pslg = make_unit_square();
+    assert_quadtree_equivalent(pslg, 1);
+    assert_quadtree_equivalent(pslg, 4);
+    assert_quadtree_equivalent(pslg, 10);
+}
+
+TEST(QuadtreeEquivalence, LShape) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+    assert_quadtree_equivalent(pslg, 3);
+    assert_quadtree_equivalent(pslg, 5);
+}
+
+TEST(QuadtreeEquivalence, NarrowChannel) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {10, 0}, {10, 0.2}, {0, 0.2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 0}
+    };
+    assert_quadtree_equivalent(pslg, 3);
+}
+
+TEST(QuadtreeEquivalence, IsolatedSegment) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {5, 0}};
+    pslg.segments = {{0, 1}};
+    assert_quadtree_equivalent(pslg, 1);
+    assert_quadtree_equivalent(pslg, 10);
+}
+
+TEST(QuadtreeEquivalence, FarApartParallels) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {10, 0}, {0, 100}, {10, 100}};
+    pslg.segments = {{0, 1}, {2, 3}};
+    assert_quadtree_equivalent(pslg, 3);
+}
+
+TEST(QuadtreeEquivalence, EmptyPSLG) {
+    PSLG pslg;
+    assert_quadtree_equivalent(pslg, 1);
+}
+
+TEST(QuadtreeEquivalence, StrayVertex) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0.5, 0.5}};
+    pslg.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+    assert_quadtree_equivalent(pslg, 4);
+}
+
+TEST(QuadtreeEquivalence, LargeGrid) {
+    // 20x20 grid with horizontal + vertical segments
+    PSLG pslg;
+    int grid = 20;
+    // Create vertices: (grid+1) x (grid+1)
+    for (int y = 0; y <= grid; ++y) {
+        for (int x = 0; x <= grid; ++x) {
+            pslg.vertices.push_back({static_cast<double>(x),
+                                     static_cast<double>(y)});
+        }
+    }
+    // Horizontal segments
+    for (int y = 0; y <= grid; ++y) {
+        for (int x = 0; x < grid; ++x) {
+            int p = y * (grid + 1) + x;
+            int q = p + 1;
+            pslg.segments.push_back({p, q});
+        }
+    }
+    // Vertical segments
+    for (int x = 0; x <= grid; ++x) {
+        for (int y = 0; y < grid; ++y) {
+            int p = y * (grid + 1) + x;
+            int q = p + (grid + 1);
+            pslg.segments.push_back({p, q});
+        }
+    }
+    assert_quadtree_equivalent(pslg, 3);
+}
+
 TEST(SegmentSplitter, FarthestEndpointCapsRefinement) {
     // Two parallel segments far apart. Without the farthest-endpoint cap,
     // F(x) would be large (distance to opposite segment) giving a large T.

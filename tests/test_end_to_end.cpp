@@ -157,6 +157,46 @@ TEST(EndToEnd, LShapeExactCounts) {
     EXPECT_EQ(out.num_edges, 37);
 }
 
+TEST(EndToEnd, QuadtreeSquareExactCounts) {
+    PSLG pslg;
+    pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    pslg.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+    SplitParams params;
+    params.n_star = 4;
+    params.use_quadtree = true;
+    auto split = split_segments(pslg, params);
+    auto out = triangulate_pslg(split);
+
+    EXPECT_EQ(split.all_vertices.size(), 16u);
+    EXPECT_EQ(split.all_segments.size(), 16u);
+    EXPECT_EQ(out.num_points, 16);
+    EXPECT_EQ(out.num_triangles, 14);
+    EXPECT_EQ(out.num_edges, 29);
+}
+
+TEST(EndToEnd, QuadtreeLShapeExactCounts) {
+    PSLG pslg;
+    pslg.vertices = {
+        {0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}
+    };
+    pslg.segments = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0}
+    };
+
+    SplitParams params;
+    params.n_star = 3;
+    params.use_quadtree = true;
+    auto split = split_segments(pslg, params);
+    auto out = triangulate_pslg(split);
+
+    EXPECT_EQ(split.all_vertices.size(), 20u);
+    EXPECT_EQ(split.all_segments.size(), 20u);
+    EXPECT_EQ(out.num_points, 20);
+    EXPECT_EQ(out.num_triangles, 18);
+    EXPECT_EQ(out.num_edges, 37);
+}
+
 TEST(EndToEnd, Deterministic) {
     PSLG pslg;
     pslg.vertices = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};

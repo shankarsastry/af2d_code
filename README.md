@@ -16,7 +16,7 @@ cmake --build build
 ## Running
 
 ```
-af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>]
+af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>] [-t]
 ```
 
 ### Arguments
@@ -34,6 +34,8 @@ af2d_main <input.poly|input.node> [-q<angle>] [-n<n_star>]
   If the angle is 30 or above, n\* defaults to 1 (the formula has a singularity), but Triangle still enforces the angle constraint via refinement.
 
 - `-n<n_star>` -- Explicit n\* value for segment splitting. Controls how many subsegments the shortest reference segment gets; other segments get proportionally more based on their local feature size ratio. Overrides the n\* derived from `-q` if both are given. Does not affect Triangle's angle refinement.
+
+- `-t` -- Enable quadtree acceleration for LFS computation. Builds a spatial index to prune distant features during segment splitting, reducing the cost of the pairwise distance computations. Produces bitwise-identical output to the default algorithm. This feature has been unit tested for correctness (including equivalence tests against the naive path on several geometries), but has not been stress tested on large real-world inputs.
 
 ### Precedence
 
@@ -56,6 +58,9 @@ af2d_main mesh.poly -n4
 
 # Explicit n*=4 with 25-degree angle enforcement
 af2d_main mesh.poly -n4 -q25
+
+# Quadtree-accelerated splitting
+af2d_main mesh.poly -n4 -t
 ```
 
 ### Output

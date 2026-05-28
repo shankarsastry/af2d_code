@@ -14,6 +14,7 @@ static void print_usage(const char* prog) {
               << "  <input>       Input file (.poly or .node)\n"
               << "  -q<angle>     Minimum angle in degrees (computes n* if < 30)\n"
               << "  -n<n_star>    Explicit n* value (overrides -q)\n"
+              << "  -t            Enable quadtree acceleration\n"
               << "\n"
               << "Output: <basename>.1.node, <basename>.1.ele, <basename>.1.edge\n";
 }
@@ -34,10 +35,13 @@ int main(int argc, char* argv[]) {
     std::string input_path;
     double q_angle = -1.0;
     int explicit_n_star = -1;
+    bool use_quadtree = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg.rfind("-q", 0) == 0) {
+        if (arg == "-t") {
+            use_quadtree = true;
+        } else if (arg.rfind("-q", 0) == 0) {
             q_angle = std::stod(arg.substr(2));
         } else if (arg.rfind("-n", 0) == 0) {
             explicit_n_star = std::stoi(arg.substr(2));
@@ -80,6 +84,8 @@ int main(int argc, char* argv[]) {
         }
     }
     // else default n_star = 1
+
+    params.use_quadtree = use_quadtree;
 
     // Split and triangulate
     auto split = split_segments(pslg, params);

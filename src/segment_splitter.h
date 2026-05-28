@@ -24,6 +24,7 @@ struct SplitParams {
     //        params.n_star = result.n_star;
     //        // check result.message if needed
     int n_star = 1;
+    bool use_quadtree = false;
 };
 
 // Result from compute_n_star_from_angle.

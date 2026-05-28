@@ -4,6 +4,7 @@ add_library(af2d_lib STATIC
     lower_envelope.cpp
     ode_solver.cpp
     segment_splitter.cpp
+    quadtree.cpp
     triangle_wrapper.cpp
     io.cpp
 )

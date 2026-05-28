@@ -2,6 +2,7 @@
 #include "distance.h"
 #include "lower_envelope.h"
 #include "ode_solver.h"
+#include "quadtree.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -20,22 +21,40 @@ struct SegmentODE {
     bool has_features;  // whether non-adjacent features exist
 };
 
-SegmentODE compute_segment_ode(const PSLG& pslg, int seg_i) {
+struct FilteredFeatures {
+    std::vector<int> vertex_indices;
+    std::vector<int> segment_indices;
+};
+
+SegmentODE compute_segment_ode(const PSLG& pslg, int seg_i,
+                               const FilteredFeatures* filtered = nullptr) {
     SegmentODE result;
     result.length = pslg.segment_length(seg_i);
     result.has_features = false;
 
     std::vector<DistanceFunction> dist_funcs;
 
-    for (int v = 0; v < static_cast<int>(pslg.vertices.size()); ++v) {
-        if (!pslg.is_adjacent_vertex(seg_i, v)) {
-            dist_funcs.push_back(distance_to_vertex(pslg, seg_i, v));
+    if (filtered) {
+        for (int v : filtered->vertex_indices) {
+            if (!pslg.is_adjacent_vertex(seg_i, v)) {
+                dist_funcs.push_back(distance_to_vertex(pslg, seg_i, v));
+            }
         }
-    }
-
-    for (int seg_j = 0; seg_j < static_cast<int>(pslg.segments.size()); ++seg_j) {
-        if (seg_j != seg_i && !pslg.is_adjacent(seg_i, seg_j)) {
-            dist_funcs.push_back(distance_to_segment(pslg, seg_i, seg_j));
+        for (int seg_j : filtered->segment_indices) {
+            if (seg_j != seg_i && !pslg.is_adjacent(seg_i, seg_j)) {
+                dist_funcs.push_back(distance_to_segment(pslg, seg_i, seg_j));
+            }
+        }
+    } else {
+        for (int v = 0; v < static_cast<int>(pslg.vertices.size()); ++v) {
+            if (!pslg.is_adjacent_vertex(seg_i, v)) {
+                dist_funcs.push_back(distance_to_vertex(pslg, seg_i, v));
+            }
+        }
+        for (int seg_j = 0; seg_j < static_cast<int>(pslg.segments.size()); ++seg_j) {
+            if (seg_j != seg_i && !pslg.is_adjacent(seg_i, seg_j)) {
+                dist_funcs.push_back(distance_to_segment(pslg, seg_i, seg_j));
+            }
         }
     }
 
@@ -113,11 +132,69 @@ SplitResult split_segments(const PSLG& pslg, const SplitParams& params) {
     int num_segs = static_cast<int>(pslg.segments.size());
     int n_star = std::max(1, params.n_star);
 
+    // Build quadtree if requested
+    Quadtree quadtree;
+    bool use_qt = params.use_quadtree && !pslg.vertices.empty();
+    if (use_qt) {
+        quadtree.build(pslg);
+    }
+
     // Pass 1: compute ODE solutions for all segments
     std::vector<SegmentODE> seg_odes(num_segs);
     #pragma omp parallel for schedule(dynamic) if(num_segs > 1)
     for (int i = 0; i < num_segs; ++i) {
-        seg_odes[i] = compute_segment_ode(pslg, i);
+        if (use_qt) {
+            const auto& si = pslg.segments[i];
+            const auto& pa = pslg.vertices[si.p];
+            const auto& pb = pslg.vertices[si.q];
+            double l_i = pa.distance(pb);
+
+            // Expand segment bbox by l_i to capture all potentially relevant features
+            BBox seg_bbox = BBox::from_segment(pa, pb).expanded(l_i);
+
+            // Query quadtree for candidate features
+            std::vector<FeatureItem> candidates;
+            quadtree.query(seg_bbox, candidates);
+
+            // Fine filter: keep features with min_distance <= l_i
+            FilteredFeatures filtered;
+            for (const auto& item : candidates) {
+                if (item.type == FeatureType::Vertex) {
+                    double d = min_distance_point_to_segment(
+                        pslg.vertices[item.index], pa, pb);
+                    if (d <= l_i) {
+                        filtered.vertex_indices.push_back(item.index);
+                    }
+                } else {
+                    const auto& sj = pslg.segments[item.index];
+                    double d = min_distance_segment_to_segment(
+                        pa, pb, pslg.vertices[sj.p], pslg.vertices[sj.q]);
+                    if (d <= l_i) {
+                        filtered.segment_indices.push_back(item.index);
+                    }
+                }
+            }
+
+            // Sort ascending for deterministic iteration order (bitwise match)
+            std::sort(filtered.vertex_indices.begin(),
+                      filtered.vertex_indices.end());
+            std::sort(filtered.segment_indices.begin(),
+                      filtered.segment_indices.end());
+
+            // Remove duplicates (quadtree may return same item from multiple nodes)
+            filtered.vertex_indices.erase(
+                std::unique(filtered.vertex_indices.begin(),
+                            filtered.vertex_indices.end()),
+                filtered.vertex_indices.end());
+            filtered.segment_indices.erase(
+                std::unique(filtered.segment_indices.begin(),
+                            filtered.segment_indices.end()),
+                filtered.segment_indices.end());
+
+            seg_odes[i] = compute_segment_ode(pslg, i, &filtered);
+        } else {
+            seg_odes[i] = compute_segment_ode(pslg, i);
+        }
     }
 
     // Find the minimum total_T among segments that have non-adjacent features
